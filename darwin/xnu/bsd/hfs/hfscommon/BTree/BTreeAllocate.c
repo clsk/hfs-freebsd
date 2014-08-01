@@ -1,23 +1,29 @@
 /*
- * Copyright (c) 2000 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2000-2003, 2005-2009 Apple Inc. All rights reserved.
  *
- * @APPLE_LICENSE_HEADER_START@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
- * The contents of this file constitute Original Code as defined in and
- * are subject to the Apple Public Source License Version 1.1 (the
- * "License").  You may not use this file except in compliance with the
- * License.  Please obtain a copy of the License at
- * http://www.apple.com/publicsource and read it before using this file.
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
  * 
- * This Original Code and all software distributed under the License are
- * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
  * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
- * License for the specific language governing rights and limitations
- * under the License.
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
  * 
- * @APPLE_LICENSE_HEADER_END@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 /*
 	File:		BTreeAllocate.c
@@ -73,15 +79,16 @@
 
 */
 
+#include "../../hfs_btreeio.h"
 #include "../../hfs_endian.h"
 #include "../headers/BTreesPrivate.h"
 
 ///////////////////// Routines Internal To BTreeAllocate.c //////////////////////
 
-OSStatus	GetMapNode (BTreeControlBlockPtr	  btreePtr,
+static OSStatus	GetMapNode (BTreeControlBlockPtr	  btreePtr,
 						BlockDescriptor			 *nodePtr,
-						UInt16					**mapPtr,
-						UInt16					 *mapSize );
+						u_int16_t					**mapPtr,
+						u_int16_t					 *mapSize );
 
 /////////////////////////////////////////////////////////////////////////////////
 
@@ -110,16 +117,16 @@ Result:		noErr			- success
 			!= noErr		- failure
 -------------------------------------------------------------------------------*/
 
-OSStatus	AllocateNode (BTreeControlBlockPtr		btreePtr, UInt32	*nodeNum)
+OSStatus	AllocateNode (BTreeControlBlockPtr		btreePtr, u_int32_t	*nodeNum)
 {
 	OSStatus		 err;
 	BlockDescriptor	 node;
-	UInt16			*mapPtr, *pos;
-	UInt16			 mapSize, size;
-	UInt16			 freeWord;
-	UInt16			 mask;
-	UInt16			 bitOffset;
-	UInt32			 nodeNumber;
+	u_int16_t		*mapPtr, *pos;
+	u_int16_t		 mapSize, size;
+	u_int16_t		 freeWord;
+	u_int16_t		 mask;
+	u_int16_t		 bitOffset;
+	u_int32_t		 nodeNumber;
 	
 	
 	nodeNumber		= 0;				// first node number of header map record
@@ -190,6 +197,10 @@ OSStatus	AllocateNode (BTreeControlBlockPtr		btreePtr, UInt32	*nodeNum)
 	
 	--btreePtr->freeNodes;
 	btreePtr->flags |= kBTHeaderDirty;
+	
+	/* Account for allocations from node reserve */
+	BTUpdateReserve(btreePtr, 1);
+
 	*nodeNum = nodeNumber;
 	
 	return noErr;
@@ -224,14 +235,14 @@ Result:		noErr			- success
 			!= noErr		- GetNode or ReleaseNode encountered some difficulty
 -------------------------------------------------------------------------------*/
 
-OSStatus	FreeNode (BTreeControlBlockPtr		btreePtr, UInt32	nodeNum)
+OSStatus	FreeNode (BTreeControlBlockPtr		btreePtr, u_int32_t	nodeNum)
 {
 	OSStatus		 err;
 	BlockDescriptor	 node;
-	UInt32			 nodeIndex;
-	UInt16			 mapSize;
-	UInt16			*mapPos;
-	UInt16			 bitOffset;
+	u_int32_t		 nodeIndex;
+	u_int16_t		 mapSize;
+	u_int16_t		*mapPos;
+	u_int16_t		 bitOffset;
 	
 
 	//////////////////////////// Find Map Record ////////////////////////////////
@@ -298,25 +309,25 @@ Result:		noErr		- success
 -------------------------------------------------------------------------------*/
 
 OSStatus	ExtendBTree	(BTreeControlBlockPtr	btreePtr,
-						 UInt32					newTotalNodes )
+						 u_int32_t				newTotalNodes )
 {
 	OSStatus				 err;
 	FCB						*filePtr;
 	FSSize					 minEOF, maxEOF;	
-	UInt16					 nodeSize;
-	UInt32					 oldTotalNodes;
-	UInt32					 newMapNodes;
-	UInt32					 mapBits, totalMapBits;
-	UInt32					 recStartBit;
-	UInt32					 nodeNum, nextNodeNum;
-	UInt32					 firstNewMapNodeNum, lastNewMapNodeNum;
+	u_int16_t				 nodeSize;
+	u_int32_t				 oldTotalNodes;
+	u_int32_t				 newMapNodes;
+	u_int32_t				 mapBits, totalMapBits;
+	u_int32_t				 recStartBit;
+	u_int32_t				 nodeNum, nextNodeNum;
+	u_int32_t				 firstNewMapNodeNum, lastNewMapNodeNum;
 	BlockDescriptor			 mapNode, newNode;
-	UInt16					*mapPos;
-	UInt16					*mapStart;
-	UInt16					 mapSize;
-	UInt16					 mapNodeRecSize;
-	UInt32					 bitInWord, bitInRecord;
-	UInt16					 mapIndex;
+	u_int16_t				*mapPos;
+	u_int16_t				*mapStart;
+	u_int16_t				 mapSize;
+	u_int16_t				 mapNodeRecSize;
+	u_int32_t				 bitInWord, bitInRecord;
+	u_int16_t				 mapIndex;
 
 
 	oldTotalNodes	 	= btreePtr->totalNodes;
@@ -348,14 +359,14 @@ OSStatus	ExtendBTree	(BTreeControlBlockPtr	btreePtr,
 	} while ( ((BTNodeDescriptor*)mapNode.buffer)->fLink != 0 );
 
 	if (DEBUG_BUILD && totalMapBits != CalcMapBits (btreePtr))
-		Panic ("\pExtendBTree: totalMapBits != CalcMapBits");
+		Panic ("ExtendBTree: totalMapBits != CalcMapBits");
 		
 	/////////////////////// Extend LEOF If Necessary ////////////////////////////
 
-	minEOF = (UInt64)newTotalNodes * (UInt64)nodeSize;
-	if ( filePtr->fcbEOF < minEOF )
+	minEOF = (u_int64_t)newTotalNodes * (u_int64_t)nodeSize;
+	if ( (u_int64_t)filePtr->fcbEOF < minEOF )
 	{
-		maxEOF = (UInt64)0x7fffffffLL * (UInt64)nodeSize;
+		maxEOF = (u_int64_t)0x7fffffffLL * (u_int64_t)nodeSize;
 
 		err = btreePtr->setEndOfForkProc (btreePtr->fileRefNum, minEOF, maxEOF);
 		M_ExitOnError (err);
@@ -407,7 +418,7 @@ OSStatus	ExtendBTree	(BTreeControlBlockPtr	btreePtr,
 		((NodeDescPtr)newNode.buffer)->kind = kBTMapNode;
 		
 		// set free space offset
-		*(UInt16 *)((Ptr)newNode.buffer + nodeSize - 4) = nodeSize - 6;
+		*(u_int16_t *)((Ptr)newNode.buffer + nodeSize - 4) = nodeSize - 6;
 
 		if (nodeNum++ == lastNewMapNodeNum)
 			break;
@@ -440,7 +451,7 @@ OSStatus	ExtendBTree	(BTreeControlBlockPtr	btreePtr,
 			err = UpdateNode (btreePtr, &mapNode, 0, kLockTransaction);
 			M_ExitOnError (err);
 			
-			err = GetNode (btreePtr, nextNodeNum, &mapNode);
+			err = GetNode (btreePtr, nextNodeNum, 0, &mapNode);
 			M_ExitOnError (err);
 			
 			// XXXdbg
@@ -448,12 +459,12 @@ OSStatus	ExtendBTree	(BTreeControlBlockPtr	btreePtr,
 
 			mapIndex = 0;
 			
-			mapStart	 = (UInt16 *) GetRecordAddress (btreePtr, mapNode.buffer, mapIndex);
+			mapStart	 = (u_int16_t *) GetRecordAddress (btreePtr, mapNode.buffer, mapIndex);
 			mapSize		 = GetRecordSize (btreePtr, mapNode.buffer, mapIndex);
 			
 			if (DEBUG_BUILD && mapSize != M_MapRecordSize (btreePtr->nodeSize) )
 			{
-				Panic ("\pExtendBTree: mapSize != M_MapRecordSize");
+				Panic ("ExtendBTree: mapSize != M_MapRecordSize");
 			}
 			
 			mapBits		= mapSize << 3;		// mapSize (in bytes) * 8
@@ -525,14 +536,15 @@ Result:		noErr			- success
 			!= noErr		- failure
 -------------------------------------------------------------------------------*/
 
+static
 OSStatus	GetMapNode (BTreeControlBlockPtr	  btreePtr,
 						BlockDescriptor			 *nodePtr,
-						UInt16					**mapPtr,
-						UInt16					 *mapSize )
+						u_int16_t				**mapPtr, 			
+						u_int16_t				 *mapSize )
 {
 	OSStatus	err;
-	UInt16		mapIndex;
-	UInt32		nextNodeNum;
+	u_int16_t	mapIndex;
+	u_int32_t	nextNodeNum;
 	
 	if (nodePtr->buffer != nil)		// if iterator is valid...
 	{
@@ -546,7 +558,7 @@ OSStatus	GetMapNode (BTreeControlBlockPtr	  btreePtr,
 		err = ReleaseNode (btreePtr, nodePtr);
 		M_ExitOnError (err);
 		
-		err = GetNode (btreePtr, nextNodeNum, nodePtr);
+		err = GetNode (btreePtr, nextNodeNum, 0, nodePtr);
 		M_ExitOnError (err);
 		
 		if ( ((NodeDescPtr)nodePtr->buffer)->kind != kBTMapNode)
@@ -558,7 +570,7 @@ OSStatus	GetMapNode (BTreeControlBlockPtr	  btreePtr,
 		++btreePtr->numMapNodesRead;
 		mapIndex = 0;
 	} else {
-		err = GetNode (btreePtr, kHeaderNodeNum, nodePtr);
+		err = GetNode (btreePtr, kHeaderNodeNum, 0, nodePtr);
 		M_ExitOnError (err);
 		
 		if ( ((NodeDescPtr)nodePtr->buffer)->kind != kBTHeaderNode)
@@ -571,7 +583,7 @@ OSStatus	GetMapNode (BTreeControlBlockPtr	  btreePtr,
 	}
 	
 		
-	*mapPtr		= (UInt16 *) GetRecordAddress (btreePtr, nodePtr->buffer, mapIndex);
+	*mapPtr		= (u_int16_t *) GetRecordAddress (btreePtr, nodePtr->buffer, mapIndex);
 	*mapSize	= GetRecordSize (btreePtr, nodePtr->buffer, mapIndex);
 	
 	return noErr;
@@ -591,9 +603,9 @@ ErrorExit:
 
 ////////////////////////////////// CalcMapBits //////////////////////////////////
 
-UInt32		CalcMapBits	(BTreeControlBlockPtr	 btreePtr)
+u_int32_t		CalcMapBits	(BTreeControlBlockPtr	 btreePtr)
 {
-	UInt32		mapBits;
+	u_int32_t		mapBits;
 	
 	mapBits		= M_HeaderMapRecordSize (btreePtr->nodeSize) << 3;
 	
@@ -601,4 +613,132 @@ UInt32		CalcMapBits	(BTreeControlBlockPtr	 btreePtr)
 		mapBits	+= M_MapRecordSize (btreePtr->nodeSize) << 3;
 	
 	return	mapBits;
+}
+
+
+/*-------------------------------------------------------------------------------
+Routine:	BTZeroUnusedNodes
+
+Function:	Write zeros to all nodes in the B-tree that are not currently in use.
+-------------------------------------------------------------------------------*/
+int
+BTZeroUnusedNodes(FCB *filePtr)
+{
+	int						err;
+	vnode_t					vp;
+	BTreeControlBlockPtr	btreePtr;
+	BlockDescriptor			mapNode;
+	buf_t					bp;
+	u_int32_t				nodeNumber;
+	u_int16_t				*mapPtr, *pos;
+	u_int16_t				mapSize, size;
+	u_int16_t				mask;
+	u_int16_t				bitNumber;
+	u_int16_t				word;
+	int						numWritten;
+	
+	vp = FTOV(filePtr);
+	btreePtr = (BTreeControlBlockPtr) filePtr->fcbBTCBPtr;
+	bp = NULL;
+	nodeNumber = 0;
+	mapNode.buffer = nil;
+	mapNode.blockHeader = nil;
+	numWritten = 0;
+	
+	/* Iterate over map nodes. */
+	while (true)
+	{
+		err = GetMapNode (btreePtr, &mapNode, &mapPtr, &mapSize);
+		if (err)
+		{
+			err = MacToVFSError(err);
+			goto ErrorExit;
+		}
+		
+		pos		= mapPtr;
+		size	= mapSize;
+		size  >>= 1;					/* convert to number of 16-bit words */
+
+		/* Iterate over 16-bit words in the map record. */
+		while (size--)
+		{
+			if (*pos != 0xFFFF)			/* Anything free in this word? */
+			{
+				word = SWAP_BE16(*pos);
+				
+				/* Iterate over bits in the word. */
+				for (bitNumber = 0, mask = 0x8000;
+				     bitNumber < 16;
+				     ++bitNumber, mask >>= 1)
+				{
+					if (word & mask)
+						continue;				/* This node is in use. */
+					
+					if (nodeNumber + bitNumber >= btreePtr->totalNodes)
+					{
+						/* We've processed all of the nodes. */
+						goto done;
+					}
+					
+					/*
+					 * Get a buffer full of zeros and write it to the unused
+					 * node.  Since we'll probably be writing a lot of nodes,
+					 * bypass the journal (to avoid a transaction that's too
+					 * big).  Instead, this behaves more like clearing out
+					 * nodes when extending a B-tree (eg., ClearBTNodes).
+					 */
+					bp = buf_getblk(vp, nodeNumber + bitNumber, btreePtr->nodeSize, 0, 0, BLK_META);
+					if (bp == NULL)
+					{
+						printf("hfs: BTZeroUnusedNodes: unable to read node %u\n", nodeNumber + bitNumber);
+						err = EIO;
+						goto ErrorExit;
+					}
+
+					if (buf_flags(bp) & B_LOCKED) {
+						/* 
+						 * This node is already part of a transaction and will be written when
+						 * the transaction is committed, so don't write it here.  If we did, then
+						 * we'd hit a panic in hfs_vnop_bwrite because the B_LOCKED bit is still set.
+						 */
+						buf_brelse(bp);
+						continue;
+					}
+					
+					buf_clear(bp);
+					buf_markaged(bp);
+					
+					/*
+					 * Try not to hog the buffer cache.  Wait for the write
+					 * every 32 nodes.   If VNOP_BWRITE reports an error, bail out and bubble
+					 * it up to the function calling us.  If we tried to update a read-only 
+					 * mount on read-only media, for example, catching the error will let 
+					 * us alert the callers of this function that they should maintain 
+					 * the mount in read-only mode.
+
+					 */
+					++numWritten;
+					if (numWritten % 32 == 0) {
+						err = VNOP_BWRITE(bp);
+						if (err) {
+							goto ErrorExit;
+						}
+					}
+					else {
+						buf_bawrite(bp);
+					}
+				}
+			}
+			
+			/* Go to the next word in the bitmap */
+			++pos;
+			nodeNumber += 16;
+		}
+	}
+
+ErrorExit:
+done:
+	(void) ReleaseNode(btreePtr, &mapNode);
+	
+	return err;
 }

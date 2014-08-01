@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2013 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
@@ -25,45 +25,40 @@
  * 
  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
-#ifndef _HFS_RANGELIST_H_
-#define _HFS_RANGELIST_H_
 
-#include <sys/appleapiopts.h>
+#ifndef __HFS_UNISTR__
+#define __HFS_UNISTR__
 
-#ifdef KERNEL
-#ifdef __APPLE_API_PRIVATE
 #include <sys/types.h>
-#include <sys/queue.h>
 
-enum rl_overlaptype {
-    RL_NOOVERLAP = 0,		/* 0 */
-    RL_MATCHINGOVERLAP,		/* 1 */
-    RL_OVERLAPCONTAINSRANGE,	/* 2 */
-    RL_OVERLAPISCONTAINED,	/* 3 */
-    RL_OVERLAPSTARTSBEFORE,	/* 4 */
-    RL_OVERLAPENDSAFTER		/* 5 */
-};
+/* 
+ * hfs_unitstr.h
+ *
+ * This file contains definition of the unicode string used for HFS Plus 
+ * files and folder names, as described by the on-disk format.
+ *
+ */
 
-#define RL_INFINITY ((off_t)-1)
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-TAILQ_HEAD(rl_head, rl_entry);
 
-struct rl_entry {
-    TAILQ_ENTRY(rl_entry) rl_link;
-    off_t rl_start;
-    off_t rl_end;
-};
+#ifndef _HFSUNISTR255_DEFINED_
+#define _HFSUNISTR255_DEFINED_
+/* Unicode strings are used for HFS Plus file and folder names */
+struct HFSUniStr255 {
+	u_int16_t	length;		/* number of unicode characters */
+	u_int16_t	unicode[255];	/* unicode characters */
+} __attribute__((aligned(2), packed));
+typedef struct HFSUniStr255 HFSUniStr255;
+typedef const HFSUniStr255 *ConstHFSUniStr255Param;
+#endif /* _HFSUNISTR255_DEFINED_ */
 
-__BEGIN_DECLS
-void rl_init(struct rl_head *rangelist);
-void rl_add(off_t start, off_t end, struct rl_head *rangelist);
-void rl_remove(off_t start, off_t end, struct rl_head *rangelist);
-enum rl_overlaptype rl_scan(struct rl_head *rangelist,
-							off_t start,
-							off_t end,
-							struct rl_entry **overlap);
-__END_DECLS
 
-#endif /* __APPLE_API_PRIVATE */
-#endif /* KERNEL */
-#endif /* ! _HFS_RANGELIST_H_ */
+#ifdef __cplusplus
+}
+#endif
+
+
+#endif /* __HFS_UNISTR__ */

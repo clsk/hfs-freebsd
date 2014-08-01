@@ -1,79 +1,43 @@
 /*
- * Copyright (c) 2000-2002 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2000-2002, 2004-2005 Apple Computer, Inc. All rights reserved.
  *
- * @APPLE_LICENSE_HEADER_START@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
- * The contents of this file constitute Original Code as defined in and
- * are subject to the Apple Public Source License Version 1.1 (the
- * "License").  You may not use this file except in compliance with the
- * License.  Please obtain a copy of the License at
- * http://www.apple.com/publicsource and read it before using this file.
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
  * 
- * This Original Code and all software distributed under the License are
- * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
  * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
- * License for the specific language governing rights and limitations
- * under the License.
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
  * 
- * @APPLE_LICENSE_HEADER_END@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 #include <sys/param.h>
 #include <sys/utfconv.h>
 #include <sys/stat.h>
+#include <sys/kernel.h>
+#include <sys/malloc.h>
+#include <libkern/libkern.h>
 
 #include	"../headers/FileMgrInternal.h"
 #include	"../headers/BTreesInternal.h"
 #include	"../headers/CatalogPrivate.h"
 #include	"../headers/HFSUnicodeWrappers.h"
-
-
-//*******************************************************************************
-//	Routine:	LocateCatalogNode
-//
-// Function: 	Locates the catalog record for an existing folder or file
-//				CNode and returns pointers to the key and data records.
-//
-//*******************************************************************************
-
-OSErr
-LocateCatalogNode(const ExtendedVCB *volume, HFSCatalogNodeID folderID, const CatalogName *name,
-					UInt32 hint, CatalogKey *keyPtr, CatalogRecord *dataPtr, UInt32 *newHint)
-{
-	OSErr				result;
-	CatalogName 		*nodeName = NULL;	/* To ward off uninitialized use warnings from compiler */
-	HFSCatalogNodeID	threadParentID;
-
-
-	result = LocateCatalogRecord(volume, folderID, name, hint, keyPtr, dataPtr, newHint);
-	ReturnIfError(result);
-	
-	// if we got a thread record, then go look up real record
-	switch ( dataPtr->recordType )
-	{
-		case kHFSFileThreadRecord:
-		case kHFSFolderThreadRecord:
-			threadParentID = dataPtr->hfsThread.parentID;
-			nodeName = (CatalogName *) &dataPtr->hfsThread.nodeName;
-			break;
-
-		case kHFSPlusFileThreadRecord:
-		case kHFSPlusFolderThreadRecord:
-			threadParentID = dataPtr->hfsPlusThread.parentID;
-			nodeName = (CatalogName *) &dataPtr->hfsPlusThread.nodeName;	
-			break;
-
-		default:
-			threadParentID = 0;
-			break;
-	}
-	
-	if ( threadParentID )		// found a thread
-		result = LocateCatalogRecord(volume, threadParentID, nodeName, kNoHint, keyPtr, dataPtr, newHint);
-	
-	return result;
-}
+#include 	"../headers/BTreesPrivate.h"
+#include	<string.h>
 
 //
 //	Routine:	LocateCatalogNodeByKey
@@ -83,16 +47,23 @@ LocateCatalogNode(const ExtendedVCB *volume, HFSCatalogNodeID folderID, const Ca
 //
 
 OSErr
-LocateCatalogNodeByKey(const ExtendedVCB *volume, UInt32 hint, CatalogKey *keyPtr,
-						CatalogRecord *dataPtr, UInt32 *newHint)
+LocateCatalogNodeByKey(const ExtendedVCB *volume, u_int32_t hint, CatalogKey *keyPtr,
+						CatalogRecord *dataPtr, u_int32_t *newHint)
 {
 	OSErr				result;
 	CatalogName 		*nodeName = NULL;
 	HFSCatalogNodeID	threadParentID;
-	UInt16 tempSize;
+	u_int16_t tempSize;
 	FSBufferDescriptor	 btRecord;
-	BTreeIterator		 searchIterator = {0};
+	struct BTreeIterator *searchIterator;
 	FCB			*fcb;
+
+	MALLOC (searchIterator, struct BTreeIterator*, sizeof(struct BTreeIterator), M_TEMP, M_WAITOK);
+	if (searchIterator == NULL) {
+		return memFullErr;  // translates to ENOMEM
+	}
+
+	bzero(searchIterator, sizeof(*searchIterator));
 
 	fcb = GetFileControlBlock(volume->catalogRefNum);
 
@@ -100,31 +71,39 @@ LocateCatalogNodeByKey(const ExtendedVCB *volume, UInt32 hint, CatalogKey *keyPt
 	btRecord.itemCount = 1;
 	btRecord.itemSize = sizeof(CatalogRecord);
 
-	searchIterator.hint.nodeNum = hint;
+	searchIterator->hint.nodeNum = hint;
 
-	bcopy(keyPtr, &searchIterator.key, sizeof(CatalogKey));
+	bcopy(keyPtr, &searchIterator->key, sizeof(CatalogKey));
 	
-	result = BTSearchRecord( fcb, &searchIterator, &btRecord, &tempSize, &searchIterator );
+	result = BTSearchRecord( fcb, searchIterator, &btRecord, &tempSize, searchIterator );
 
 	if (result == noErr)
 	{
-		*newHint = searchIterator.hint.nodeNum;
+		*newHint = searchIterator->hint.nodeNum;
 
-		BlockMoveData(&searchIterator.key, keyPtr, sizeof(CatalogKey));
+		BlockMoveData(&searchIterator->key, keyPtr, sizeof(CatalogKey));
 	}
 
-	if (result == btNotFound)
-		result = cmNotFound;	
-	ReturnIfError(result);
+	if (result == btNotFound) {
+		result = cmNotFound;
+	}	
+
+	if (result) {
+		FREE(searchIterator, M_TEMP);
+		return result;
+	}
 	
 	// if we got a thread record, then go look up real record
 	switch ( dataPtr->recordType )
 	{
+
+#if CONFIG_HFS_STD
 		case kHFSFileThreadRecord:
 		case kHFSFolderThreadRecord:
 			threadParentID = dataPtr->hfsThread.parentID;
 			nodeName = (CatalogName *) &dataPtr->hfsThread.nodeName;
 			break;
+#endif
 
 		case kHFSPlusFileThreadRecord:
 		case kHFSPlusFolderThreadRecord:
@@ -140,6 +119,7 @@ LocateCatalogNodeByKey(const ExtendedVCB *volume, UInt32 hint, CatalogKey *keyPt
 	if ( threadParentID )		// found a thread
 		result = LocateCatalogRecord(volume, threadParentID, nodeName, kNoHint, keyPtr, dataPtr, newHint);
 	
+	FREE (searchIterator, M_TEMP);
 	return result;
 }
 
@@ -154,20 +134,40 @@ LocateCatalogNodeByKey(const ExtendedVCB *volume, UInt32 hint, CatalogKey *keyPt
 
 OSErr
 LocateCatalogRecord(const ExtendedVCB *volume, HFSCatalogNodeID folderID, const CatalogName *name,
-					UInt32 hint, CatalogKey *keyPtr, CatalogRecord *dataPtr, UInt32 *newHint)
+					__unused u_int32_t hint, CatalogKey *keyPtr, CatalogRecord *dataPtr, u_int32_t *newHint)
 {
-	OSErr			result;
-	CatalogKey		tempKey;	// 518 bytes
-	UInt16			tempSize;
+	OSErr result;
+	uint16_t tempSize;
+	FSBufferDescriptor btRecord;
+	struct BTreeIterator *searchIterator = NULL;
+	FCB *fcb;
+	BTreeControlBlock *btcb;
 
-	BuildCatalogKey(folderID, name, (volume->vcbSigWord == kHFSPlusSigWord), &tempKey);
+	MALLOC (searchIterator, struct BTreeIterator*, sizeof(struct BTreeIterator), M_TEMP, M_WAITOK);
+	if (searchIterator == NULL) {
+		return memFullErr;  // translates to ENOMEM
+	}
 
-	if ( name == NULL )
-		hint = kNoHint;			// no CName given so clear the hint
+	bzero(searchIterator, sizeof(*searchIterator));
 
-	result = SearchBTreeRecord(volume->catalogRefNum, &tempKey, hint, keyPtr, dataPtr, &tempSize, newHint);
+
+	fcb = GetFileControlBlock(volume->catalogRefNum);
+	btcb = (BTreeControlBlock *)fcb->fcbBTCBPtr;
 	
-	return (result == btNotFound ? cmNotFound : result);	
+	btRecord.bufferAddress = dataPtr;
+	btRecord.itemCount = 1;
+	btRecord.itemSize = sizeof(CatalogRecord);
+
+	BuildCatalogKey(folderID, name, (volume->vcbSigWord == kHFSPlusSigWord), (CatalogKey *)&searchIterator->key);
+
+	result = BTSearchRecord(fcb, searchIterator, &btRecord, &tempSize, searchIterator);
+	if (result == noErr) {
+		*newHint = searchIterator->hint.nodeNum;
+		BlockMoveData(&searchIterator->key, keyPtr, CalcKeySize(btcb, &searchIterator->key));
+	}
+
+	FREE (searchIterator, M_TEMP);
+	return (result == btNotFound ? cmNotFound : result);
 }
 
 
@@ -195,6 +195,7 @@ BuildCatalogKey(HFSCatalogNodeID parentID, const CatalogName *cName, Boolean isH
 			key->hfsPlus.keyLength += sizeof(UniChar) * cName->ustr.length;	// add CName size to key length
 		}
 	}
+#if CONFIG_HFS_STD
 	else
 	{
 		key->hfs.keyLength		= kHFSCatalogKeyMinimumLength;	// initial key length (1 + 4 + 1)
@@ -207,18 +208,20 @@ BuildCatalogKey(HFSCatalogNodeID parentID, const CatalogName *cName, Boolean isH
 			key->hfs.keyLength += key->hfs.nodeName[0];		// add CName size to key length
 		}
 	}
+#endif
+
 }
 
 OSErr
-BuildCatalogKeyUTF8(ExtendedVCB *volume, HFSCatalogNodeID parentID, const char *name, UInt32 nameLength,
-		    CatalogKey *key, UInt32 *textEncoding)
+BuildCatalogKeyUTF8(ExtendedVCB *volume, HFSCatalogNodeID parentID, const unsigned char *name, u_int32_t nameLength,
+		    CatalogKey *key, u_int32_t *textEncoding)
 {
 	OSErr err = 0;
 
     if ( name == NULL)
         nameLength = 0;
     else if (nameLength == kUndefinedStrLen)
-        nameLength = strlen(name);
+        nameLength = strlen((const char *)name);
 
 	if ( volume->vcbSigWord == kHFSPlusSigWord ) {
 		size_t unicodeBytes = 0;
@@ -237,6 +240,7 @@ BuildCatalogKeyUTF8(ExtendedVCB *volume, HFSCatalogNodeID parentID, const char *
 			*textEncoding = hfs_pickencoding(key->hfsPlus.nodeName.unicode,
 				key->hfsPlus.nodeName.length);
 	}
+#if CONFIG_HFS_STD
 	else {
 		key->hfs.keyLength		= kHFSCatalogKeyMinimumLength;	// initial key length (1 + 4 + 1)
 		key->hfs.reserved		= 0;				// clear unused byte
@@ -256,6 +260,7 @@ BuildCatalogKeyUTF8(ExtendedVCB *volume, HFSCatalogNodeID parentID, const char *
 		if (textEncoding)
 			*textEncoding = 0;
 	}
+#endif
 
 	if (err) {
 		if (err == ENAMETOOLONG)
@@ -280,6 +285,7 @@ FlushCatalog(ExtendedVCB *volume)
 {
 	FCB *	fcb;
 	OSErr	result;
+	struct hfsmount *hfsmp = VCBTOHFS (volume);
 	
 	fcb = GetFileControlBlock(volume->catalogRefNum);
 	result = BTFlushPath(fcb);
@@ -290,10 +296,10 @@ FlushCatalog(ExtendedVCB *volume)
 		
 		if ( 0 /*fcb->fcbFlags & fcbModifiedMask*/ )
 		{
-			VCB_LOCK(volume);
-			volume->vcbFlags |= 0xFF00;		// Mark the VCB dirty
+			hfs_lock_mount (hfsmp);
+			MarkVCBDirty(volume);	// Mark the VCB dirty
 			volume->vcbLsMod = GetTimeUTC();	// update last modified date
-			VCB_UNLOCK(volume);
+			hfs_unlock_mount (hfsmp);
 
 		//	result = FlushVolumeControlBlock(volume);
 		}
@@ -326,9 +332,9 @@ UpdateCatalogName(ConstStr31Param srcName, Str31 destName)
 //_______________________________________________________________________
 
 void
-CopyCatalogName(const CatalogName *srcName, CatalogName *dstName, Boolean isHFSPLus)
+CopyCatalogName(const CatalogName *srcName, CatalogName *dstName, Boolean isHFSPlus)
 {
-	UInt32	length;
+	u_int32_t	length = 0;
 	
 	if ( srcName == NULL )
 	{
@@ -337,10 +343,14 @@ CopyCatalogName(const CatalogName *srcName, CatalogName *dstName, Boolean isHFSP
 		return;
 	}
 	
-	if (isHFSPLus)
+	if (isHFSPlus) {
 		length = sizeof(UniChar) * (srcName->ustr.length + 1);
-	else
-		length = sizeof(UInt8) + srcName->pstr[0];
+	}
+#if CONFIG_HFS_STD
+	else {
+		length = sizeof(u_int8_t) + srcName->pstr[0];
+	}
+#endif
 
 	if ( length > 1 )
 		BlockMoveData(srcName, dstName, length);

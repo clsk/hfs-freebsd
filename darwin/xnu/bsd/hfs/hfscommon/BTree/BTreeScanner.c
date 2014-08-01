@@ -1,27 +1,34 @@
 /*
- * Copyright (c) 1996-2002 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 1996-2008 Apple Inc. All rights reserved.
  *
- * @APPLE_LICENSE_HEADER_START@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
- * The contents of this file constitute Original Code as defined in and
- * are subject to the Apple Public Source License Version 1.1 (the
- * "License").  You may not use this file except in compliance with the
- * License.  Please obtain a copy of the License at
- * http://www.apple.com/publicsource and read it before using this file.
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
  * 
- * This Original Code and all software distributed under the License are
- * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
  * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
- * License for the specific language governing rights and limitations
- * under the License.
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
  * 
- * @APPLE_LICENSE_HEADER_END@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  *
  *	@(#)BTreeScanner.c
  */
 #include <sys/kernel.h>
+#include "../../hfs_endian.h"
 
 #include "../headers/BTreeScanner.h"
 
@@ -80,7 +87,7 @@ int BTScanNextRecord(	BTScanState *	scanState,
 		//	See if we have a record in the current node
 		err = GetRecordByIndex( scanState->btcb, scanState->currentNodePtr, 
 								scanState->recordNum, (KeyPtr *) key, 
-								(UInt8 **) data, &dataSizeShort  );
+								(u_int8_t **) data, &dataSizeShort  );
 
 		if ( err == noErr )
 		{
@@ -139,7 +146,9 @@ int BTScanNextRecord(	BTScanState *	scanState,
 
 static int FindNextLeafNode(	BTScanState *scanState, Boolean avoidIO )
 {
-	int		err;
+	int err;
+	BlockDescriptor block;
+	FileReference fref;
 	
 	err = noErr;		// Assume everything will be OK
 	
@@ -176,15 +185,30 @@ static int FindNextLeafNode(	BTScanState *scanState, Boolean avoidIO )
 				continue; 
 			}
 
-			(u_int8_t *) scanState->currentNodePtr += scanState->btcb->nodeSize;
+			scanState->currentNodePtr = (BTNodeDescriptor *)(((u_int8_t *)scanState->currentNodePtr) 
+										+ scanState->btcb->nodeSize);
 		}
 		
-		// Make sure this is a valid node
-		if ( CheckNode( scanState->btcb, scanState->currentNodePtr ) != noErr )
-		{
+		/* Fake a BlockDescriptor */
+		block.blockHeader = NULL;	/* No buffer cache buffer */
+		block.buffer = scanState->currentNodePtr;
+		block.blockNum = scanState->nodeNum;
+		block.blockSize = scanState->btcb->nodeSize;
+		block.blockReadFromDisk = 1;
+		block.isModified = 0;
+		
+		fref = scanState->btcb->fileRefNum;
+		
+		/* This node was read from disk, so it must be swapped/checked.
+		 * Since we are reading multiple nodes, we might have read an 
+		 * unused node.  Therefore we allow swapping of unused nodes.
+		 */
+		err = hfs_swap_BTNode(&block, fref, kSwapBTNodeBigToHost, true);
+		if ( err != noErr ) {
+			printf("hfs: FindNextLeafNode: Error from hfs_swap_BTNode (node %u)\n", scanState->nodeNum);
 			continue;
 		}
-		
+
 		if ( scanState->currentNodePtr->kind == kBTLeafNode )
 			break;
 	}
@@ -212,17 +236,17 @@ static int ReadMultipleNodes( BTScanState *theScanStatePtr )
 {
 	int						myErr = E_NONE;
 	BTreeControlBlockPtr  	myBTreeCBPtr;
-	daddr_t					myPhyBlockNum;
+	daddr64_t				myPhyBlockNum;
 	u_int32_t				myBufferSize;
 	struct vnode *			myDevPtr;
-	int						myBlockRun;
+	unsigned int			myBlockRun;
 	u_int32_t				myBlocksInBufferCount;
 
 	// release old buffer if we have one
 	if ( theScanStatePtr->bufferPtr != NULL )
 	{
-	    theScanStatePtr->bufferPtr->b_flags |= (B_INVAL | B_AGE);
-		brelse( theScanStatePtr->bufferPtr );
+	        buf_markinvalid(theScanStatePtr->bufferPtr);
+		buf_brelse( theScanStatePtr->bufferPtr );
 		theScanStatePtr->bufferPtr = NULL;
 		theScanStatePtr->currentNodePtr = NULL;
 	}
@@ -230,8 +254,8 @@ static int ReadMultipleNodes( BTScanState *theScanStatePtr )
 	myBTreeCBPtr = theScanStatePtr->btcb;
 			
 	// map logical block in catalog btree file to physical block on volume
-	myErr = VOP_BMAP( myBTreeCBPtr->fileRefNum, theScanStatePtr->nodeNum, 
-					  &myDevPtr, &myPhyBlockNum, &myBlockRun );
+	myErr = hfs_bmap(myBTreeCBPtr->fileRefNum, theScanStatePtr->nodeNum, 
+	                 &myDevPtr, &myPhyBlockNum, &myBlockRun);
 	if ( myErr != E_NONE )
 	{
 		goto ExitThisRoutine;
@@ -248,18 +272,18 @@ static int ReadMultipleNodes( BTScanState *theScanStatePtr )
 	}
 	
 	// now read blocks from the device 
-	myErr = bread( 	myDevPtr, 
-							myPhyBlockNum, 
-							myBufferSize,  
-							NOCRED, 
-							&theScanStatePtr->bufferPtr );
+	myErr = (int)buf_meta_bread(myDevPtr, 
+	                       myPhyBlockNum, 
+	                       myBufferSize,  
+	                       NOCRED, 
+	                       &theScanStatePtr->bufferPtr );
 	if ( myErr != E_NONE )
 	{
 		goto ExitThisRoutine;
 	}
 
-	theScanStatePtr->nodesLeftInBuffer = theScanStatePtr->bufferPtr->b_bcount / theScanStatePtr->btcb->nodeSize;
-	theScanStatePtr->currentNodePtr = (BTNodeDescriptor *) theScanStatePtr->bufferPtr->b_data;
+	theScanStatePtr->nodesLeftInBuffer = buf_count(theScanStatePtr->bufferPtr) / theScanStatePtr->btcb->nodeSize;
+	theScanStatePtr->currentNodePtr = (BTNodeDescriptor *) buf_dataptr(theScanStatePtr->bufferPtr);
 
 ExitThisRoutine:
 	return myErr;
@@ -339,7 +363,7 @@ int		BTScanInitialize(	const FCB *		btreeFile,
 	scanState->currentNodePtr		= NULL;
 	scanState->nodesLeftInBuffer	= 0;		// no nodes currently in buffer
 	scanState->recordsFound			= recordsFound;
-	scanState->startTime			= time;		// initialize our throttle
+	microuptime(&scanState->startTime);			// initialize our throttle
 		
 	return noErr;
 	
@@ -373,8 +397,8 @@ int	 BTScanTerminate(	BTScanState *		scanState,
 
 	if ( scanState->bufferPtr != NULL )
 	{
-		scanState->bufferPtr->b_flags |= (B_INVAL | B_AGE);
-		brelse( scanState->bufferPtr );
+		buf_markinvalid(scanState->bufferPtr);
+		buf_brelse( scanState->bufferPtr );
 		scanState->bufferPtr = NULL;
 		scanState->currentNodePtr = NULL;
 	}

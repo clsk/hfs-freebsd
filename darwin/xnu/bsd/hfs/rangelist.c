@@ -1,26 +1,35 @@
 /*
- * Copyright (c) 2001 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2001, 2006-2008 Apple Inc. All rights reserved.
  *
- * @APPLE_LICENSE_HEADER_START@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
- * The contents of this file constitute Original Code as defined in and
- * are subject to the Apple Public Source License Version 1.1 (the
- * "License").  You may not use this file except in compliance with the
- * License.  Please obtain a copy of the License at
- * http://www.apple.com/publicsource and read it before using this file.
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
  * 
- * This Original Code and all software distributed under the License are
- * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
  * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
- * License for the specific language governing rights and limitations
- * under the License.
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
  * 
- * @APPLE_LICENSE_HEADER_END@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 
+#if HFS
+
 #include <sys/param.h>
+#include <mach/boolean.h>
 #include <sys/time.h>
 #include <sys/malloc.h>
 
@@ -36,17 +45,13 @@ static void rl_collapse_neighbors(struct rl_head *rangelist, struct rl_entry *ra
 static void
 rl_verify(struct rl_head *rangelist) {
 	struct rl_entry *entry;
+	struct rl_entry *next;
 	off_t limit = 0;
 	
-	if (TAILQ_EMPTY(rangelist)) return;
-	entry = TAILQ_FIRST(rangelist);
-	while (1) {
-		if (TAILQ_NEXT(entry, rl_link) == entry) panic("rl_verify: circular rangelist?!");
-		if ((limit > 0) && (entry->rl_start <= limit)) panic("rl_verify: bad entry start?!");
-		if (entry->rl_end < entry->rl_start) panic("rl_verify: bad entry end?!");
+	TAILQ_FOREACH_SAFE(rangelist, entry, rl_link, next) {
+		if ((limit > 0) && (entry->rl_start <= limit)) panic("hfs: rl_verify: bad entry start?!");
+		if (entry->rl_end < entry->rl_start) panic("hfs: rl_verify: bad entry end?!");
 		limit = entry->rl_end;
-		if (entry == TAILQ_LAST(rangelist, rl_head)) return;
-		entry = TAILQ_NEXT(entry, rl_link);
 	};
 }
 #endif
@@ -75,7 +80,7 @@ rl_add(off_t start, off_t end, struct rl_head *rangelist)
 	enum rl_overlaptype ovcase;
 
 #ifdef RL_DIAGNOSTIC
-	if (end < start) panic("rl_add: end < start?!");
+	if (end < start) panic("hfs: rl_add: end < start?!");
 #endif
 
 	ovcase = rl_scan(rangelist, start, end, &overlap);
@@ -165,10 +170,10 @@ void
 rl_remove(off_t start, off_t end, struct rl_head *rangelist)
 {
 	struct rl_entry *range, *next_range, *overlap, *splitrange;
-	int ovcase, moretotest;
+	int ovcase;
 
 #ifdef RL_DIAGNOSTIC
-	if (end < start) panic("rl_remove: end < start?!");
+	if (end < start) panic("hfs: rl_remove: end < start?!");
 #endif
 
 	if (TAILQ_EMPTY(rangelist)) {
@@ -210,29 +215,22 @@ rl_remove(off_t start, off_t end, struct rl_head *rangelist)
 			break;
 
 		case RL_OVERLAPISCONTAINED: /* 3: range contains overlap */
-			moretotest = (overlap != TAILQ_LAST(rangelist, rl_head));
-#ifdef RL_DIAGNOSTIC
-			if (TAILQ_NEXT(overlap, rl_link) == overlap) panic("rl_remove: circular range list?!");
-#endif
-			next_range = TAILQ_NEXT(overlap, rl_link);	/* Check before discarding overlap entry */
+			/* Check before discarding overlap entry */
+			next_range = TAILQ_NEXT(overlap, rl_link);
 			TAILQ_REMOVE(rangelist, overlap, rl_link);
 			FREE(overlap, M_TEMP);
-			if (moretotest) {
+			if (next_range) {
 				range = next_range;
 				continue;
 			};
 			break;
 
 		case RL_OVERLAPSTARTSBEFORE: /* 4: overlap starts before range */
-			moretotest = (overlap != TAILQ_LAST(rangelist, rl_head));
 			overlap->rl_end = start - 1;
-			if (moretotest) {
-#ifdef RL_DIAGNOSTIC
-				if (TAILQ_NEXT(overlap, rl_link) == overlap) panic("rl_remove: circular range list?!");
-#endif
-				range = TAILQ_NEXT(overlap, rl_link);
+			range = TAILQ_NEXT(overlap, rl_link);
+			if (range) {
 				continue;
-			};
+			}
 			break;
 
 		case RL_OVERLAPENDSAFTER: /* 5: overlap ends after range */
@@ -316,14 +314,13 @@ rl_scan_from(struct rl_head *rangelist,
 				return RL_NOOVERLAP;
 			};
 			
+			range = TAILQ_NEXT(range, rl_link);
 			/* Check the other entries in the list: */
-			if (range == TAILQ_LAST(rangelist, rl_head)) {
+			if (range == NULL) {
 				return RL_NOOVERLAP;
-			};
-#ifdef RL_DIAGNOSTIC
-			if (TAILQ_NEXT(range, rl_link) == range) panic("rl_scan_from: circular range list?!");
-#endif
-			*overlap = range = TAILQ_NEXT(range, rl_link);
+			}
+			
+			*overlap = range;
 			continue;
 		}
 		
@@ -361,7 +358,7 @@ rl_scan_from(struct rl_head *rangelist,
 
 		/* Control should never reach here... */
 #ifdef RL_DIAGNOSTIC
-		panic("rl_scan_from: unhandled overlap condition?!");
+		panic("hfs: rl_scan_from: unhandled overlap condition?!");
 #endif
 	}
         
@@ -371,28 +368,22 @@ rl_scan_from(struct rl_head *rangelist,
 
 static void
 rl_collapse_forwards(struct rl_head *rangelist, struct rl_entry *range) {
-    struct rl_entry *next_range;
-    
-    while (1) {
-		if (range == TAILQ_LAST(rangelist, rl_head)) return;
-    
-#ifdef RL_DIAGNOSTIC
-		if (TAILQ_NEXT(range, rl_link) == range) panic("rl_collapse_forwards: circular range list?!");
-#endif
-		next_range = TAILQ_NEXT(range, rl_link);
-        if ((range->rl_end != RL_INFINITY) && (range->rl_end < next_range->rl_start - 1)) return;
+	struct rl_entry *next_range;
+	
+	while ((next_range = TAILQ_NEXT(range, rl_link))) { 
+		if ((range->rl_end != RL_INFINITY) && (range->rl_end < next_range->rl_start - 1)) return;
 
-        /* Expand this range to include the next range: */
-        range->rl_end = next_range->rl_end;
-        
-        /* Remove the now covered range from the list: */
-        TAILQ_REMOVE(rangelist, next_range, rl_link);
-        FREE(next_range, M_TEMP);
+		/* Expand this range to include the next range: */
+		range->rl_end = next_range->rl_end;
+
+		/* Remove the now covered range from the list: */
+		TAILQ_REMOVE(rangelist, next_range, rl_link);
+		FREE(next_range, M_TEMP);
 
 #ifdef RL_DIAGNOSTIC
 		rl_verify(rangelist);
 #endif
-    };
+	};
 }
 
 
@@ -401,14 +392,8 @@ static void
 rl_collapse_backwards(struct rl_head *rangelist, struct rl_entry *range) {
     struct rl_entry *prev_range;
     
-    while (1) {
-        if (range == TAILQ_FIRST(rangelist)) return;
-        
-#ifdef RL_DIAGNOSTIC
-		if (TAILQ_PREV(range, rl_head, rl_link) == range) panic("rl_collapse_backwards: circular range list?!");
-#endif
-        prev_range = TAILQ_PREV(range, rl_head, rl_link);
-        if (prev_range->rl_end < range->rl_start - 1) {
+		while ((prev_range = TAILQ_PREV(range, rl_head, rl_link))) {
+			if (prev_range->rl_end < range->rl_start -1) {
 #ifdef RL_DIAGNOSTIC
 			rl_verify(rangelist);
 #endif
@@ -432,3 +417,35 @@ rl_collapse_neighbors(struct rl_head *rangelist, struct rl_entry *range)
     rl_collapse_forwards(rangelist, range);
     rl_collapse_backwards(rangelist, range);
 }
+
+#else /* not HFS - temp workaround until 4277828 is fixed */
+/* stubs for exported routines that aren't present when we build kernel without HFS */
+
+#include <sys/types.h>
+
+void rl_add(off_t start, off_t end, void *rangelist);
+void rl_init(void *rangelist);
+void rl_remove(off_t start, off_t end, void *rangelist);
+int rl_scan(void *rangelist, off_t start, off_t end, void **overlap);
+
+void rl_add(__unused off_t start, __unused off_t end, __unused void *rangelist)
+{
+	return;
+}
+
+void rl_init(__unused void *rangelist)
+{
+	return;
+}
+
+void rl_remove(__unused off_t start, __unused off_t end, __unused void *rangelist)
+{
+	return;
+}
+
+int rl_scan(__unused void *rangelist, __unused off_t start, __unused off_t end, __unused void **overlap)
+{
+	return(0);
+}
+
+#endif /* HFS */

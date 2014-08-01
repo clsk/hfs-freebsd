@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2005-2011 Apple Computer, Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
@@ -25,45 +25,35 @@
  * 
  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
-#ifndef _HFS_RANGELIST_H_
-#define _HFS_RANGELIST_H_
+#ifndef _HFS_BTREEIO_H_
+#define _HFS_BTREEIO_H_
 
 #include <sys/appleapiopts.h>
 
 #ifdef KERNEL
 #ifdef __APPLE_API_PRIVATE
-#include <sys/types.h>
-#include <sys/queue.h>
 
-enum rl_overlaptype {
-    RL_NOOVERLAP = 0,		/* 0 */
-    RL_MATCHINGOVERLAP,		/* 1 */
-    RL_OVERLAPCONTAINSRANGE,	/* 2 */
-    RL_OVERLAPISCONTAINED,	/* 3 */
-    RL_OVERLAPSTARTSBEFORE,	/* 4 */
-    RL_OVERLAPENDSAFTER		/* 5 */
-};
+#include "hfs.h"
+#include "hfscommon/headers/BTreesInternal.h"
 
-#define RL_INFINITY ((off_t)-1)
+/* BTree accessor routines */
+extern OSStatus SetBTreeBlockSize(FileReference vp, ByteCount blockSize, 
+				ItemCount minBlockCount);
 
-TAILQ_HEAD(rl_head, rl_entry);
+extern OSStatus GetBTreeBlock(FileReference vp, u_int32_t blockNum, 
+				GetBlockOptions options, BlockDescriptor *block);
 
-struct rl_entry {
-    TAILQ_ENTRY(rl_entry) rl_link;
-    off_t rl_start;
-    off_t rl_end;
-};
+extern OSStatus ReleaseBTreeBlock(FileReference vp, BlockDescPtr blockPtr, 
+				ReleaseBlockOptions options);
 
-__BEGIN_DECLS
-void rl_init(struct rl_head *rangelist);
-void rl_add(off_t start, off_t end, struct rl_head *rangelist);
-void rl_remove(off_t start, off_t end, struct rl_head *rangelist);
-enum rl_overlaptype rl_scan(struct rl_head *rangelist,
-							off_t start,
-							off_t end,
-							struct rl_entry **overlap);
-__END_DECLS
+extern OSStatus ExtendBTreeFile(FileReference vp, FSSize minEOF, FSSize maxEOF);
+
+extern void ModifyBlockStart(FileReference vp, BlockDescPtr blockPtr);
+
+int hfs_create_attr_btree(struct hfsmount *hfsmp, u_int32_t nodesize, u_int32_t nodecnt);
+
+u_int16_t get_btree_nodesize(struct vnode *vp);
 
 #endif /* __APPLE_API_PRIVATE */
 #endif /* KERNEL */
-#endif /* ! _HFS_RANGELIST_H_ */
+#endif /* ! _HFS_BTREEIO_H_ */

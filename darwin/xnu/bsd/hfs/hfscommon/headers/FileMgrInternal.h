@@ -1,23 +1,29 @@
 /*
- * Copyright (c) 2000-2002 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2000-2013 Apple Inc. All rights reserved.
  *
- * @APPLE_LICENSE_HEADER_START@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  * 
- * The contents of this file constitute Original Code as defined in and
- * are subject to the Apple Public Source License Version 1.1 (the
- * "License").  You may not use this file except in compliance with the
- * License.  Please obtain a copy of the License at
- * http://www.apple.com/publicsource and read it before using this file.
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. The rights granted to you under the License
+ * may not be used to create, or enable the creation or redistribution of,
+ * unlawful or unlicensed copies of an Apple operating system, or to
+ * circumvent, violate, or enable the circumvention or violation of, any
+ * terms of an Apple operating system software license agreement.
  * 
- * This Original Code and all software distributed under the License are
- * distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * Please obtain a copy of the License at
+ * http://www.opensource.apple.com/apsl/ and read it before using this file.
+ * 
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
  * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT.  Please see the
- * License for the specific language governing rights and limitations
- * under the License.
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
  * 
- * @APPLE_LICENSE_HEADER_END@
+ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 /*
 	File:		FilesInternal.h
@@ -26,7 +32,7 @@
 
 	Version:	HFS Plus 1.0
 
-	Copyright:	© 1996-2001 by Apple Computer, Inc., all rights reserved.
+	Copyright:	ï¿½ 1996-2001 by Apple Computer, Inc., all rights reserved.
 
 */
 #ifndef __FILEMGRINTERNAL__
@@ -34,7 +40,7 @@
 
 #include <sys/appleapiopts.h>
 
-#ifdef _KERNEL
+#ifdef KERNEL
 #ifdef __APPLE_API_PRIVATE
 
 #include <sys/param.h>
@@ -46,28 +52,12 @@
 #include "../../hfs_cnode.h"
 
 
-#if PRAGMA_ONCE
-#pragma once
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#if PRAGMA_IMPORT
-#pragma import on
-#endif
-
-#if PRAGMA_STRUCT_ALIGN
-	#pragma options align=mac68k
-#elif PRAGMA_STRUCT_PACKPUSH
-	#pragma pack(push, 2)
-#elif PRAGMA_STRUCT_PACK
-	#pragma pack(2)
-#endif
-
 /* CatalogNodeID is used to track catalog objects */
-typedef UInt32		HFSCatalogNodeID;
+typedef u_int32_t		HFSCatalogNodeID;
 
 /* internal error codes*/
 
@@ -115,6 +105,7 @@ enum {
 	kEFReserveMask  = 0x04,   /* keep block reserve */
 	kEFDeferMask    = 0x08,   /* defer file block allocations */
 	kEFNoClumpMask  = 0x10,   /* don't round up to clump size */
+	kEFMetadataMask  = 0x20,  /* metadata allocation */
 
 	kTFTrunExtBit				= 0,							/*	truncate to the extent containing new PEOF*/
 	kTFTrunExtMask				= 1
@@ -150,25 +141,6 @@ union ExtentRecord {
 	HFSPlusExtentRecord 			hfsPlus;
 };
 typedef union ExtentRecord				ExtentRecord;
-/* Universal catalog key */
-
-union CatalogKey {
-	HFSCatalogKey 					hfs;
-	HFSPlusCatalogKey 				hfsPlus;
-};
-typedef union CatalogKey				CatalogKey;
-/* Universal catalog data record */
-
-union CatalogRecord {
-	SInt16 							recordType;
-	HFSCatalogFolder 				hfsFolder;
-	HFSCatalogFile 					hfsFile;
-	HFSCatalogThread 				hfsThread;
-	HFSPlusCatalogFolder 			hfsPlusFolder;
-	HFSPlusCatalogFile 				hfsPlusFile;
-	HFSPlusCatalogThread 			hfsPlusThread;
-};
-typedef union CatalogRecord				CatalogRecord;
 
 
 enum {
@@ -192,44 +164,17 @@ typedef union CatalogName CatalogName;
 #define GetFileControlBlock(fref)		VTOF((fref))
 #define GetFileRefNumFromFCB(fcb)		FTOV((fcb))
 
-
-/*	The following macro marks a VCB as dirty by setting the upper 8 bits of the flags*/
-EXTERN_API_C( void )
-MarkVCBDirty					(ExtendedVCB *vcb);
-
-EXTERN_API_C( void )
-MarkVCBClean					(ExtendedVCB *vcb);
-
-EXTERN_API_C( Boolean )
-IsVCBDirty						(ExtendedVCB *vcb);
-
-
-#define VCB_LOCK_INIT(vcb)		mtx_init(&vcb->vcbSimpleLock, "hfs vcb lock", NULL, MTX_DEF)
-#define VCB_LOCK(vcb)			mtx_lock(&vcb->vcbSimpleLock)
-#define VCB_UNLOCK(vcb)			mtx_unlock(&vcb->vcbSimpleLock)
-#define VCB_LOCK_DESTROY(vcb)	mtx_destroy(&vcb->vcbSimpleLock)
-
-#define	MarkVCBDirty(vcb)		{ ((vcb)->vcbFlags |= 0xFF00); }
-#define	MarkVCBClean(vcb)		{ ((vcb)->vcbFlags &= 0x00FF); }
-#define	IsVCBDirty(vcb)			((Boolean) ((vcb->vcbFlags & 0xFF00) != 0))
-
-
 /*	Test for error and return if error occurred*/
 EXTERN_API_C( void )
 ReturnIfError					(OSErr 					result);
 
-#define	ReturnIfError(result)					if ( (result) != noErr ) return (result); else ;
-/*	Test for passed condition and return if true*/
-EXTERN_API_C( void )
-ReturnErrorIf					(Boolean 				condition,
-								 OSErr 					result);
+#define	ReturnIfError(result)				do {	if ( (result) != noErr ) return (result); } while(0)
 
-#define	ReturnErrorIf(condition, error)			if ( (condition) )	return( (error) );
 /*	Exit function on error*/
 EXTERN_API_C( void )
 ExitOnError						(OSErr 					result);
 
-#define	ExitOnError( result )					if ( ( result ) != noErr )	goto ErrorExit; else ;
+#define	ExitOnError( result )				do {	if ( ( result ) != noErr )	goto ErrorExit; } while(0)
 
 
 
@@ -241,147 +186,139 @@ ExchangeFileIDs					(ExtendedVCB *			volume,
 								 ConstUTF8Param			destName,
 								 HFSCatalogNodeID		srcID,
 								 HFSCatalogNodeID		destID,
-								 UInt32					srcHint,
-								 UInt32					destHint );
-
-EXTERN_API_C( SInt32 )
-CompareCatalogKeys				(HFSCatalogKey *		searchKey,
-								 HFSCatalogKey *		trialKey);
-
-EXTERN_API_C( SInt32 )
-CompareExtendedCatalogKeys		(HFSPlusCatalogKey *	searchKey,
-								 HFSPlusCatalogKey *	trialKey);
+								 u_int32_t				srcHint,
+								 u_int32_t				destHint );
 
 EXTERN_API_C( OSErr )
-InitCatalogCache				(void);
-
-EXTERN_API_C( void )
-DestroyCatalogCache				(void);
-
-EXTERN_API_C( void )
-InvalidateCatalogCache			(ExtendedVCB *			volume);
-
-
+MoveData( ExtendedVCB *vcb, HFSCatalogNodeID srcID, HFSCatalogNodeID destID, int rsrc);
 
 /* BTree Manager Routines*/
 
-typedef CALLBACK_API_C( SInt32 , KeyCompareProcPtr )(void *a, void *b);
+typedef CALLBACK_API_C( int32_t , KeyCompareProcPtr )(void *a, void *b);
 
-
-EXTERN_API_C( OSErr )
-SearchBTreeRecord				(FileReference 				refNum,
-								 const void *			key,
-								 UInt32 				hint,
-								 void *					foundKey,
-								 void *					data,
-								 UInt16 *				dataSize,
-								 UInt32 *				newHint);
 
 EXTERN_API_C( OSErr )
 ReplaceBTreeRecord				(FileReference 				refNum,
 								 const void *			key,
-								 UInt32 				hint,
+								 u_int32_t 				hint,
 								 void *					newData,
-								 UInt16 				dataSize,
-								 UInt32 *				newHint);
+								 u_int16_t 				dataSize,
+								 u_int32_t *			newHint);
 
 
 /*	Prototypes for exported routines in VolumeAllocation.c*/
+
+/* 
+ * Flags for BlockAllocate() and BlockDeallocate()
+ */ 
+#define HFS_ALLOC_FORCECONTIG		0x1	//force contiguous block allocation; minblocks must be allocated
+#define HFS_ALLOC_METAZONE			0x2	//can use metazone blocks
+#define HFS_ALLOC_SKIPFREEBLKS		0x4	//skip checking/updating freeblocks during alloc/dealloc
+#define HFS_ALLOC_FLUSHTXN			0x8	//pick best fit for allocation, even if a jnl flush is req'd
+
 EXTERN_API_C( OSErr )
 BlockAllocate					(ExtendedVCB *			vcb,
-								 UInt32 				startingBlock,
-								 SInt64 				bytesRequested,
-								 SInt64 				bytesMaximum,
-								 Boolean 				forceContiguous,
-								 UInt32 *				startBlock,
-								 UInt32 *				actualBlocks);
+								 u_int32_t 				startingBlock,
+								 u_int32_t 				minBlocks,
+								 u_int32_t 				maxBlocks,
+								 u_int32_t				flags,
+								 u_int32_t *			startBlock,
+								 u_int32_t *			actualBlocks);
 
 EXTERN_API_C( OSErr )
 BlockDeallocate					(ExtendedVCB *			vcb,
-								 UInt32 				firstBlock,
-								 UInt32 				numBlocks);
+								 u_int32_t 				firstBlock,
+								 u_int32_t 				numBlocks,
+								 u_int32_t				flags);
 
-EXTERN_API_C( UInt32 )
-FileBytesToBlocks				(SInt64 				numerator,
-								 UInt32 				denominator);
+EXTERN_API_C ( void )
+ResetVCBFreeExtCache(struct hfsmount *hfsmp);
+
+EXTERN_API_C( OSErr )
+BlockMarkAllocated(ExtendedVCB *vcb, u_int32_t startingBlock, u_int32_t numBlocks);
+
+EXTERN_API_C( OSErr )
+BlockMarkFree( ExtendedVCB *vcb, u_int32_t startingBlock, u_int32_t numBlocks);
+
+EXTERN_API_C( OSErr )
+BlockMarkFreeUnused( ExtendedVCB *vcb, u_int32_t startingBlock, u_int32_t numBlocks);
+
+EXTERN_API_C( u_int32_t )
+MetaZoneFreeBlocks(ExtendedVCB *vcb);
+	
+EXTERN_API_C( u_int32_t )
+UpdateAllocLimit (struct hfsmount *hfsmp, u_int32_t new_end_block);
+
+EXTERN_API_C( u_int32_t )
+ScanUnmapBlocks(struct hfsmount *hfsmp);
+
+EXTERN_API_C( int )
+hfs_init_summary (struct hfsmount *hfsmp);
 
 /*	File Extent Mapping routines*/
 EXTERN_API_C( OSErr )
 FlushExtentFile					(ExtendedVCB *			vcb);
 
-EXTERN_API_C( SInt32 )
+#if CONFIG_HFS_STD
+EXTERN_API_C( int32_t )
 CompareExtentKeys				(const HFSExtentKey *	searchKey,
 								 const HFSExtentKey *	trialKey);
+#endif
 
-EXTERN_API_C( SInt32 )
+EXTERN_API_C( int32_t )
 CompareExtentKeysPlus			(const HFSPlusExtentKey *searchKey,
 								 const HFSPlusExtentKey *trialKey);
 
 EXTERN_API_C( OSErr )
-TruncateFileC					(ExtendedVCB *			vcb,
-								 FCB *					fcb,
-								 SInt64 				peof,
-								 Boolean 				truncateToExtent);
-
+TruncateFileC (ExtendedVCB *vcb, FCB *fcb, int64_t peof, int deleted, 
+			   int rsrc, uint32_t fileid, Boolean truncateToExtent);
+	
 EXTERN_API_C( OSErr )
 ExtendFileC						(ExtendedVCB *			vcb,
 								 FCB *					fcb,
-								 SInt64 				bytesToAdd,
-								 UInt32 				blockHint,
-								 UInt32 				flags,
-								 SInt64 *				actualBytesAdded);
+								 int64_t 				bytesToAdd,
+								 u_int32_t 				blockHint,
+								 u_int32_t 				flags,
+								 int64_t *				actualBytesAdded);
 
 EXTERN_API_C( OSErr )
 MapFileBlockC					(ExtendedVCB *			vcb,
 								 FCB *					fcb,
 								 size_t 				numberOfBytes,
 								 off_t 					offset,
-								 daddr_t *				startBlock,
+								 daddr64_t *				startBlock,
 								 size_t *				availableBytes);
+
+OSErr HeadTruncateFile(ExtendedVCB  *vcb, FCB  *fcb, u_int32_t  headblks);
+
+EXTERN_API_C( int )
+AddFileExtent (ExtendedVCB *vcb, FCB *fcb, u_int32_t startBlock, u_int32_t blockCount);
 
 #if TARGET_API_MACOS_X
 EXTERN_API_C( Boolean )
 NodesAreContiguous				(ExtendedVCB *			vcb,
 								 FCB *					fcb,
-								 UInt32					nodeSize);
+								 u_int32_t				nodeSize);
 #endif
 
-/*	Utility routines*/
-
-EXTERN_API_C( OSErr )
-VolumeWritable					(ExtendedVCB *	vcb);
 
 
 /*	Get the current time in UTC (GMT)*/
-EXTERN_API_C( UInt32 )
+EXTERN_API_C( u_int32_t )
 GetTimeUTC						(void);
 
-EXTERN_API_C( UInt32 )
-LocalToUTC						(UInt32 				localTime);
+EXTERN_API_C( u_int32_t )
+LocalToUTC						(u_int32_t 				localTime);
 
-EXTERN_API_C( UInt32 )
-UTCToLocal						(UInt32 				utcTime);
+EXTERN_API_C( u_int32_t )
+UTCToLocal						(u_int32_t 				utcTime);
 
-
-#if PRAGMA_STRUCT_ALIGN
-	#pragma options align=reset
-#elif PRAGMA_STRUCT_PACKPUSH
-	#pragma pack(pop)
-#elif PRAGMA_STRUCT_PACK
-	#pragma pack()
-#endif
-
-#ifdef PRAGMA_IMPORT_OFF
-#pragma import off
-#elif PRAGMA_IMPORT
-#pragma import reset
-#endif
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* __APPLE_API_PRIVATE */
-#endif /* _KERNEL */
+#endif /* KERNEL */
 #endif /* __FILEMGRINTERNAL__ */
 
