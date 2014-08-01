@@ -1,0 +1,37 @@
+<html>
+<head>
+	<title>mount_hfs for FreeBSD</title>
+</head>
+
+<body>
+
+<h2>mount_hfs for FreeBSD</h2>
+
+<h3>Status</h3>
+
+	<p><code>mount_hfs</code> was written to accommodate FreeBSD
+	peculiarities and is covered by the BSD license.</p>
+
+<h3>Known Problems</h3>
+
+	<p>The mask option <code>(-m)</code> doesn't work in the case
+	of HFS Plus.</p>
+
+<h3>Plans for Improvement</h3>
+
+	<p>Move all HFS mount flags from the mount(2) <code>flags</code>
+	argument to the filesystem-specific argument.</p>
+
+	<p>Separate the mask option <code>(-m)</code> into two
+	options, one for files and the other for directories.
+	[Suggested by Matthew N. Dodd]</p>
+
+	<p>Add an option to force case-sensitive mode.
+	[Suggested by Max Khon]</p>
+
+<hr>
+
+<p>$Id: mount_hfs.html,v 1.6 2003/03/24 18:07:23 yar Exp $</p>
+
+</body>
+</html>

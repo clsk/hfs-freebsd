@@ -1,0 +1,8 @@
+"cr_uid == 0" abuse: should use suser()
+ASSERT_XX_LOCKED before accessing v_[vi]flags
+grant submodules (e.g., encodings) with own malloc types
+check for memory leaks
+permissions on plain HFS or old HFS Plus are strange (000)
+open device r/w even in r/o mount case (e.g., see msdosfs_vfsops.c r. 1.103)
+use kernel iconv?
+layerize b_op.bop_write for btree blocks

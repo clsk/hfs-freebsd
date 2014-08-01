@@ -1,0 +1,292 @@
+<html>
+<head>
+	<title>HFS and HFS Plus in FreeBSD</title>
+	<meta name="description" content="HFS driver and tools for FreeBSD">
+	<meta name="keywords" content="HFS,FreeBSD,driver,filesystem,port">
+</head>
+
+<body>
+<h1>HFS and HFS Plus in FreeBSD</h1>
+
+<h2>An Important Note on the Current Status of This Project</h2>
+
+	<p><b>With very little motivation left to keep this project alive,
+	I'm looking for a volunteer who can take it over.  Until I find one,
+	new releases of HFS for FreeBSD will be as likely as the rain in the
+	desert.  Sorry.</b></p>
+
+<h2>Introduction</h2>
+
+	<p>HFS stands for the Hierarchical File System.
+	<a href="http://developer.apple.com/documentation/mac/Files/Files-99.html">HFS</a>
+	and
+	<a href="http://developer.apple.com/technotes/tn/tn1150.html">HFS Plus</a>
+	are the filesystem formats of
+	<a href="http://developer.apple.com/documentation/macos8/mac8.html">Apple MacOS.</a>
+	While the older one, HFS, may look rather limited today, HFS Plus
+	includes most of the capabilities one can find in UFS or Berkeley FFS:
+	long file names, hard and soft links, special nodes, owner and group
+	information, access permissions.</p>
+
+	<p>Additionally, both HFS and HFS Plus have a number of interesting
+	features not found in UFS:</p>
+	
+	<ul>
+	
+		<li>They support so called <em>forks,</em> that is, multiple
+		segments of data associated with a single file.  HFS supports
+		as little as two forks per file, "data" and "resource."  HFS
+		Plus was designed to allow for numerous named forks.  However,
+		its current implementation limits this capability to the two
+		aforementioned forks per file.</li>
+
+		<li>Major internal structures of HFS and HFS Plus are kept as
+		B-trees.  An HFS Plus volume essentially consists of a small
+		header and a set of B-trees.  B-trees make many filesystem
+		operations time-efficient.</li>
+
+		<li>HFS Plus stores filenames in Unicode, thus supporting
+		for multi-language environment.</li>
+
+	</ul>
+
+	<p>Apple has recently released the original HFS kernel
+	and userland code (incl. HFS Plus) under
+	<a href="http://www.opensource.apple.com/apsl/">the Apple Public Source
+	License [APSL]</a>
+	as a part of Darwin, which created a nice opportunity to
+	port it to FreeBSD.</p>
+
+	<p>HFS and HFS Plus in FreeBSD may be of particular value to parties
+	interested in sharing filesystem resources over a network from FreeBSD
+	to MacOS, because there will be no need to emulate HFS-specific
+	features unlike in the case of FFS backing store.</p>
+
+	<p><em>Henceforth the term "HFS" will cover both HFS and HFS Plus
+	unless explicitly specified otherwise.  To avoid misreading,
+	the old HFS format will be denoted as "plain HFS."</em></p>
+
+	<p><em>The term "port" used throughout this document means only that
+	the HFS code has been ported from Darwin to FreeBSD; it has nothing
+	to do with FreeBSD ports and packages (yet.)</em></p>
+
+<h2>About This Port</h2>
+
+	<!-- <h3>Overall Status</h3> -->
+
+	<p>This port is based on the Darwin source code.  It's legal to
+	use or develop it as long as
+	<a href="http://www.opensource.apple.com/apsl/">the APSL terms</a>
+	are kept.</p>
+
+	<p><b>This port should be considered highly experimental and therefore
+	used with caution.  Neither Apple nor the maintainer of this
+	port will take responsibility for data loss or damage that
+	might result from using this piece of software.</b></p>
+
+<h2>Port Components</h2>
+
+	<p>This port consists of the following functional parts:</p>
+
+	<ul>
+	
+		<li><a href="kernel.html">A kernel module</a></li>
+
+		<li>Userland Utilities:
+
+		<ul>
+
+			<li><a href="newfs_hfs.html">newfs_hfs</a></li>
+
+			<li><a href="mount_hfs.html">mount_hfs</a></li>
+
+			<li><a href="fsck_hfs.html">fsck_hfs</a></li>
+
+		</ul>
+
+	</ul>
+
+<h2>Download</h2>
+
+	<p>Via HTTP from this site:</p>
+
+	<dl>
+
+		<dt><a href="hfs-freebsd-01.tar.gz">version 01</a></dt>
+
+		<dd>
+
+			2003-Mar-22: The first public version.
+
+		</dd>
+
+		<dt><a href="hfs-freebsd-02.tar.gz">version 02</a></dt>
+			
+		<dd>
+
+			2003-Jun-23: Updated from Darwin 6.6 (MacOS 10.2.6.)
+
+		</dd>
+
+		<dt><a href="hfs-freebsd-03.tar.gz">version 03</a></dt>
+			
+		<dd>
+
+			2003-Aug-12: Updated with respect to recent
+			changes in FreeBSD-CURRENT.
+			If you follow -CURRENT actively,
+			you'll need this version.
+			It contains no other improvements over
+			the previous one.
+
+		</dd>
+
+		<dt><a href="hfs-freebsd-03p1.tar.gz">version 03 patchlevel 1</a></dt>
+			
+		<dd>
+
+			2004-Feb-12: FreeBSD-CURRENT has changed enough
+			to prevent earlier versions from building.
+			This one will build successfully in
+			FreeBSD 5.2-RELEASE or newer.
+			Thanks to Zack Hobson, Nik Clayton, Brian Feldman,
+			and Murata Shuuichirou
+			for sending me relevant patches,
+			and to all the people who kept reminding me about this
+			project :-)
+
+		</dd>
+
+		<dt><a href="hfs-freebsd-03p2.tar.gz">version 03 patchlevel 2</a></dt>
+
+		<dd>
+			
+			2004-Aug-30: This distribution is for FreeBSD 5.3-RELEASE.
+
+		</dd>
+
+	</dl>
+
+<h2>Installation and Usage</h2>
+
+	<h3>Prerequisites</h3>
+
+		<p>Your system should be at least as new as 5.0-RELEASE.</p>
+
+		<p>To use MacOS-formatted disks, you will need
+		FreeBSD-CURRENT as fresh as of the 24th of February, 2003
+		(5.1-RELEASE will do);
+		otherwise this port's usability will be limited
+		to HFS volume images and volumes created within IBM
+		PC (MBR) partitions.  To enable support of the MacOS disk
+		format on architectures other that PowerPC, you will need
+		to rebuild your kernel with the option <code>GEOM_APPLE</code>.
+		This option is always enabled on the PowerPC
+		architecture.  In -CURRENT, it is also available as
+		a loadable module called <code>geom_apple</code>
+		since the 31st of May, 2003.</p>
+
+		<p>The kernel source must be installed at
+		<code>/usr/src/sys.</code></p>
+
+		<p>The source code of <code>mount(8)</code> must be
+		installed at <code>/usr/src/sbin/mount.</code></p>
+
+	<h3>Building and Installing</h3>
+
+		<pre><code>
+	# tar xzf hfs-freebsd-xx.tar.gz
+	# cd hfs-freebsd-xx
+	# make
+	# make install
+		</code></pre>
+
+	<h3>Using</h3>
+		
+		<pre><code>
+	# mount -t hfs /dev/da0s3 /mnt
+		</code></pre>
+
+<h2>Caveats</h2>
+
+	<p>The GEOM_APPLE module will allocate the first slice of a
+	MacOS-formatted disk to
+	the partition map itself since the latter is self-contained.
+	The first of conventional partitions will appear at slice 2.
+	That partition may contain drivers or auxiliary
+	data instead of a disk volume; GEOM_APPLE can't distinguish
+	between them yet.  You may have to look at the beginning of a
+	partition with hexdump(1) to tell if it's an HFS
+	volume&mdash;a 'BD' or 'H+' signature must appear at offset 0x400.
+	On the other hand, it's all right to try to mount an obscure
+	partition as an HFS volume; the driver will simply refuse
+	it if it's not HFS.</p>
+
+<h2>Practical Applications</h2>
+
+	<h3>Managing your iPod from FreeBSD</h3>
+
+		<p>If you have an iPod formatted for Mac, you can
+		access its files from FreeBSD as well.  Eirik Oeverby
+		&lt;ltning at anduin dot net&gt;
+		reports that it's possible to connect an iPod to a FreeBSD
+		host through FireWire.  Of course, you'll need to load
+		the FireWire driver in advance.</p>
+
+		<p>The entire disk of your iPod will be accessible as
+		<code>/dev/daX</code>, where <code>X</code> is a number
+		assigned to this new device upon plugging it.
+		The GEOM_APPLE module will further split the disk into
+		<code>/dev/daXs1</code>, a partition map partition
+		(yes, it's self-contained); <code>/dev/daXs2</code>,
+		a firmware partition; and <code>/dev/daXs3</code>,
+		an HFS Plus volume partition.  Obviously, you should
+		mount the latter.</p>
+
+		<p>Eirik also reports that he had been unable to mount
+		the HFS volume of his iPod until he took his chance with
+		repairing it using
+		<a href="fsck_hfs.html">the port of fsck_hfs.</a>
+		Beware of iPod firmware bugs silently eating the
+		file system!</p>
+
+		<p>Note that you'll need software to manage the iTunes
+		database on your iPod, or else audio files uploaded
+		won't show up in your iPod playlist.  There's a number
+		of open-source projects around dedicated to that.
+		Look for myPod, gtkPod, or whatever.</p>
+
+<!--
+<h2>Contacting the Port's Maintainer</h2>
+
+	<p>I'm looking forward to receive any feedback on this port
+	<a href="mailto:yar@freebsd.org">through email.</a>
+	Please include the word "HFS" in the subject of your message
+	for my convenience.</p>
+
+	<p>If you're reporting a bug, please include as many relevant technical
+	details as possible.  I'd appreciate your using
+	<a href="http://www.chiark.greenend.org.uk/~sgtatham/bugs.html">this
+	guideline</a> for writing bug reports.</p>
+	
+	<p>Providing me with a problem volume image along with a bug report
+	would help a lot.  Please contact me about details.</p>
+-->
+
+<h2>Acknowledgments</h2>
+
+	<p>Thank Apple for taking
+	<a href="http://developer.apple.com/darwin/ps-faq.html">the
+	open-source way.</a></p>
+
+	<p>This work was initially sponsored by the KDS Ratmir company.</p>
+
+<hr>
+
+<p>The original location of this page is
+<a href="http://people.freebsd.org/~yar/hfs/">here.</a></p>
+
+<p>$Id: index.html,v 1.8.2.5 2004/08/31 07:00:46 yar Exp $</p>
+
+</body>
+</html>

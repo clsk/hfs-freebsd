@@ -1,0 +1,48 @@
+See also hfs4/NOTES.FreeBSD!
+
+===
+
+Used defines:
+
+DARWIN		- ifdef out generic Darwin-specific code
+DARWIN_JOURNAL	- --"-- journalig
+DARWIN_QUOTA	- --"-- quota
+DARWIN_UBC	- --"-- unified block cache
+DARWIN_DEFERRED_ALLOCATION - --"-- delaying allocation
+			 (would work with clustered I/O only)
+
+===
+
+Using vop_std(un)lock, vop_stdislocked is problematic since
+these routines use vnode.v_vnlock while HFS uses cnode.c_lock
+at a number of places, a very important one being hfs_metafilelocking().
+This port sets vnode.v_vnlock to &cnode.c_lock so that a) the std
+routines can be used, and b) locking a fork's vnode locks out all
+forks because they share a single cnode.
+
+===
+
+In VFS_MOUNT() method, mntonname should not be set since that
+is done by vfs_mount(); moreover, it would be set incorrectly
+(e.g., to an empty string.)
+
+===
+
+hfs_metafilelocking() assumes that the allocation bitmap can be
+protected by the extents file lock.  However, I/O on the bitmap
+requires the bitmap vnode be locked.  There is a workaround for
+that in hfs_metafilelocking() now.
+
+===
+
+HFS code uses two block sizes, probably unequal--one for allocation
+and the other for logical to physical block number translation.
+The former is the volume allocation block size (the FS parameter)
+while the latter is likely to be chosen equal to PAGE_SIZE.
+That is:
+hfs_bmap() does its calculations using what GetLogicalBlockSize()
+has returned: bTreeInfo.nodeSize for b-trees, vcb->vcbVBMIOSize for
+the allocation file, and hfsmp->hfs_logBlockSize for the others.
+Therefore, read-write IO calculations should use this block size, too.
+Note that hfs_logBlockSize is chosen to divide the allocation block size.
+On the other hand, all allocation formuli use vcb->blockSize.

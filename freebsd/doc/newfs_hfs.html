@@ -1,0 +1,47 @@
+<html>
+<head>
+	<title>newfs_hfs for FreeBSD</title>
+</head>
+
+<body>
+
+<h2>newfs_hfs for FreeBSD</h2>
+
+<h3>Status</h3>
+
+	<p><code>fsck_hfs</code> is based on the corresponding utility from
+	Darwin 6.6 (MacOS 10.2.6.)</p>
+
+	<p>A few bugs existing in Darwin's version of <code>newfs_hfs</code>
+	have been fixed:</p>
+	
+	<ul>
+
+		<li>Due to using an uninitialized variable during creation of a
+		plain HFS volume, the number of leaf records in the catalog
+		B-tree would be set to 6 instead of 2, as though a journaled
+		HFS Plus volume were to be set up.</li>
+
+		<li>A journaled HFS Plus volume created on a little-endian
+		architecture would have some fields of the catalog record for a
+		system file in the wrong byte order.</li>
+
+	</ul>
+
+<h3>Known Problems and Limitations</h3>
+
+	<p>Only devices with the block size of 512 bytes are supported.</p>
+
+	<p>Creating a journaled HFS Plus volume less than the journal file size
+	will fail with an obscure error message.  It's a bug from Darwin.</p>
+
+<h3>Plans for Improvement</h3>
+
+	<p>Currently none.</p>
+
+<hr>
+
+<p>$Id: newfs_hfs.html,v 1.4 2003/06/23 15:30:57 yar Exp $</p>
+
+</body>
+</html>

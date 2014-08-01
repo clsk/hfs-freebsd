@@ -1,0 +1,131 @@
+.\"
+.\" Copyright (c) 1993,1994 Christopher G. Demetriou
+.\" Copyright (c) 1999 Semen Ustimenko
+.\" Copyright (c) 2002 Yar Tikhiy
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. The name of the author may not be used to endorse or promote products
+.\"    derived from this software without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+.\" OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+.\" IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+.\" NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+.\" DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+.\" THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+.\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+.\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd February 14, 2002
+.Dt MOUNT_HFS 8
+.Os
+.Sh NAME
+.Nm mount_hfs
+.Nd mount an HFS or HFS Plus volume
+.Sh SYNOPSIS
+.Nm
+.Op Fl P
+.Op Fl u Ar uid
+.Op Fl g Ar gid
+.Op Fl m Ar mask
+.Pa special
+.Pa node
+.Sh DESCRIPTION
+The
+.Nm
+command attaches the HFS or HFS Plus (both denoted henceforth as HFS)
+volume residing on the device
+.Pa special
+to the global filesystem namespace at the location indicated by
+.Pa node .
+This command is normally executed by
+.Xr mount 8
+at boot time, but can be used by any user to mount an
+HFS volume on any directory that they own (provided,
+of course, that they have appropriate access to the device that
+contains the volume.)
+.Pp
+The options are as follows:
+.Bl -tag -width ".Fl m Ar mask"
+.It Fl P
+Discard any owner, group, and permission information
+that may be found in the volume.
+This applies only to HFS Plus volumes since the plain HFS
+format doesn't support storing such information at all.
+Plain HFS volumes are always mounted as though this
+option is set.
+The effective owner, group, and permission bits are
+inherited from the mount point
+.Pa node
+if not set with the below options.
+.It Fl u Ar uid
+Set the owner of the files in the volume to
+.Ar uid .
+.It Fl g Ar gid
+Set the group of the files in the volume to
+.Ar gid .
+.It Fl m Ar mask
+Specify the maximum permissions for the files
+in the volume.
+.El
+.Sh FEATURES
+HFS forks can be accessed as follows:
+.Bd -literal -offset indent
+file[/..namedfork/FORK]
+.Ed
+.Pp
+.Sq FORK
+currently can be
+.Dq data
+(for the data fork)
+or
+.Dq rsrc
+(for the resource fork.)
+Default is the data fork.
+.Sh EXAMPLES
+Mount the HFS volume located on
+.Pa /dev/ad2s2 :
+.Bd -literal -offset indent
+# mount_hfs /dev/ad2s2 /mnt
+.Ed
+or
+.Bd -literal -offset indent
+# mount -t hfs /dev/ad2s2 /mnt
+.Ed
+.Pp
+Read the resource fork of the file
+.Pa /mnt/file :
+.Bd -literal -offset indent
+# cat /mnt/file/..namedfork/rsrc
+.Ed
+.Sh SEE ALSO
+.Xr fstab 5 ,
+.Xr mount 8 ,
+.Xr umount 8 ,
+.Sh CAVEATS
+HFS directories cannot be opened and read as files unlike in UFS,
+because an HFS directory exists as a relation, not
+as a solid data structure inside the volume.
+.Sh BUGS
+The
+.Fl m
+option currently has no effect for HFS Plus volumes.
+.Sh HISTORY
+The HFS code was initially ported from Darwin to
+.Fx 4.5
+by Yar Tikhiy in 2002, and re-ported to
+.Fx 5.0
+in 2003.
+The work was sponsored by the KDS Ratmir company.
